@@ -1,19 +1,39 @@
 import csv
 import os
+import re
 
-def load_replacements(csv_file_path):
+def load_replacements(file):
+    """Load replacements from a CSV file or file-like object."""
     replacements = {}
-    with open(csv_file_path, 'r', encoding='utf-8') as csv_file:
+    
+    # Support both file paths and file-like objects
+    if isinstance(file, str):
+        file = open(file, 'r', encoding='utf-8')
+        should_close = True
+    else:
+        should_close = False
+    
+    # Read from CSV
+    with file as csv_file:
         reader = csv.DictReader(csv_file)
         for row in reader:
             hex_value = row["Hex_Value"]
             original_value = row["Original_Value"]
             replacements[hex_value] = original_value
+
+    if should_close:
+        file.close()
+        
     return replacements
 
 def restore_text(text, replacements):
+    """Restore original PII text from hex values using a replacements dictionary."""
     for hex_value, original_value in replacements.items():
+        # Restore hex values with the original text
         text = text.replace(hex_value, original_value)
+    
+    # Remove any "~name~" markers added around names
+    text = re.sub(r"~name~(.*?)~name~", r"\1", text)
     return text
 
 def main():

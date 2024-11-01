@@ -2,6 +2,18 @@ import re
 import random
 import csv
 import os
+import nltk
+from nltk.corpus import words, names
+
+# Ensure the necessary NLTK corpora are downloaded
+nltk.download('words', quiet=True)
+nltk.download('names', quiet=True)
+
+# Initialize English words and names sets from NLTK
+english_words = set(words.words())
+male_names = set(names.words('male.txt'))
+female_names = set(names.words('female.txt'))
+all_names = male_names | female_names  # Combine male and female names
 
 # Function to generate an 8-digit hex value
 def generate_hex():
@@ -10,6 +22,14 @@ def generate_hex():
 # Check if a value is already an 8-digit hex string
 def is_hex(value):
     return bool(re.fullmatch(r"[A-Fa-f0-9]{8}", value))
+
+# Check if a word is an English word
+def is_english_word(word):
+    return word.lower() in english_words
+
+# Check if a word is a common name
+def is_name(word):
+    return word in all_names
 
 # Function to find and replace PII in text, ensuring unique replacements
 def replace_pii(text, pii_patterns):
@@ -21,16 +41,21 @@ def replace_pii(text, pii_patterns):
         for match in matches:
             original_value = match.group(0)
 
-            # Skip if this original value is already an 8-digit hex string
-            if original_value in replacements or is_hex(original_value):
+            # Skip if this original value is already an 8-digit hex, or is an English word but not a name
+            if original_value in replacements or is_hex(original_value) or (is_english_word(original_value) and not is_name(original_value)):
                 continue
 
             # Generate a new hex value for the original PII
             hex_value = generate_hex()
             replacements[original_value] = (hex_value, label)
 
-            # Replace only in the text, not in the replacements dictionary
-            processed_text = processed_text.replace(original_value, hex_value, 1)
+            # Surround names with ~name~ and replace all instances
+            if label == "name":
+                modified_value = f"~name~{hex_value}~name~"
+            else:
+                modified_value = hex_value
+            
+            processed_text = re.sub(re.escape(original_value), modified_value, processed_text)
 
     return processed_text, replacements
 
@@ -40,7 +65,7 @@ def main():
     pii_patterns = {
         "phone_number": r'\b(\+?1[-.\s]?|0)?(\(?\d{3}\)?[-.\s]?)?\d{3}[-.\s]?\d{4}\b',
         "email": r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,7}\b',
-        "name": r'\b[A-Z][a-z]*\s[A-Z][a-z]*\b',  # Simplistic pattern for names
+        "name": r'\b[A-Z][a-z]*[_\s][A-Z][a-z]*\b',  # Updated pattern to match both "First Last" and "First_Last"
         "password": r'\b(?:password[:=]?\s*([A-Za-z0-9@#$%^&+=]{8,}))|([A-Za-z0-9@#$%^&+=]{8,})\b'  # Only replace actual password values
     }
 
